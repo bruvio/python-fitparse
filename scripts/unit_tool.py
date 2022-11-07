@@ -17,15 +17,14 @@ def do_profile_xls():
 
     all_unit_values = []
     for unit_value in sheet.col_values(8):  # Extract unit column values
-        unit_value = unit_value.strip()
-        if unit_value:
+        if unit_value := unit_value.strip():
             # Deal with comma separated components
             unit_values = [v.strip() for v in unit_value.split(',')]
             all_unit_values.extend(unit_values)
 
     print('In Profile.xls:')
     for unit_value in sorted(set(all_unit_values)):
-        print(' * %s' % unit_value)
+        print(f' * {unit_value}')
 
 
 def do_fitparse_profile():
@@ -34,23 +33,24 @@ def do_fitparse_profile():
         for field in message_type.fields.values():
             unit_values.append(field.units)
             if field.components:
-                for component in field.components:
-                    unit_values.append(component.units)
+                unit_values.extend(component.units for component in field.components)
             if field.subfields:
                 for subfield in field.subfields:
                     unit_values.append(subfield.units)
                     if subfield.components:
-                        for component in subfield.components:
-                            unit_values.append(component.units)
-
+                        unit_values.extend(component.units for component in subfield.components)
     unit_values = filter(None, unit_values)
 
     print('In fitparse/profile.py:')
     for unit_value in sorted(set(unit_values)):
-        print(' * {} [{}]'.format(
-            unit_value,
-            scrub_method_name('process_units_%s' % unit_value, convert_units=True)
-        ))
+        print(
+            ' * {} [{}]'.format(
+                unit_value,
+                scrub_method_name(
+                    f'process_units_{unit_value}', convert_units=True
+                ),
+            )
+        )
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

@@ -105,20 +105,15 @@ class DataMessage(RecordBase):
                 return field_data.as_dict() if as_dict else field_data
 
     def get_raw_value(self, field_name):
-        field_data = self.get(field_name)
-        if field_data:
-            return field_data.raw_value
-        return None
+        return field_data.raw_value if (field_data := self.get(field_name)) else None
 
     def get_value(self, field_name):
-        # SIMPLIFY: get rid of this completely
-        field_data = self.get(field_name)
-        if field_data:
+        if field_data := self.get(field_name):
             return field_data.value
 
     def get_values(self):
         # SIMPLIFY: get rid of this completely
-        return {f.name if f.name else f.def_num: f.value for f in self.fields}
+        return {f.name or f.def_num: f.value for f in self.fields}
 
     @property
     def name(self):
@@ -173,16 +168,14 @@ class FieldData(RecordBase):
     # TODO: Some notion of flags
 
     def is_named(self, name):
-        if self.field:
-            if name in (self.field.name, self.field.def_num):
-                return True
-        if self.parent_field:
-            if name in (self.parent_field.name, self.parent_field.def_num):
-                return True
-        if self.field_def:
-            if name == self.field_def.def_num:
-                return True
-        return False
+        if self.field and name in (self.field.name, self.field.def_num):
+            return True
+        if self.parent_field and name in (
+            self.parent_field.name,
+            self.parent_field.def_num,
+        ):
+            return True
+        return bool(self.field_def and name == self.field_def.def_num)
 
     @property
     def def_num(self):
@@ -216,15 +209,21 @@ class FieldData(RecordBase):
         }
 
     def __repr__(self):
-        return '<FieldData: %s: %s%s, def num: %d, type: %s (%s), raw value: %s>' % (
-            self.name, self.value, ' [%s]' % self.units if self.units else '',
-            self.def_num, self.type.name, self.base_type.name, self.raw_value,
+        return (
+            '<FieldData: %s: %s%s, def num: %d, type: %s (%s), raw value: %s>'
+            % (
+                self.name,
+                self.value,
+                f' [{self.units}]' if self.units else '',
+                self.def_num,
+                self.type.name,
+                self.base_type.name,
+                self.raw_value,
+            )
         )
 
     def __str__(self):
-        return '{}: {}{}'.format(
-            self.name, self.value, ' [%s]' % self.units if self.units else '',
-        )
+        return f"{self.name}: {self.value}{f' [{self.units}]' if self.units else ''}"
 
 
 class BaseType(RecordBase):
@@ -347,7 +346,7 @@ class Crc:
             self.update(byte_arr)
 
     def __repr__(self):
-        return '<{} {}>'.format(self.__class__.__name__, self.value or "-")
+        return f'<{self.__class__.__name__} {self.value or "-"}>'
 
     def __str__(self):
         return self.format(self.value)

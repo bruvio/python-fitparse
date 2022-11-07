@@ -42,11 +42,12 @@ class DeveloperDataMixin:
                                       units=None, native_field_num=None):
         if dev_data_index not in self.dev_types:
             if self.check_developer_data:
-                raise FitParseError("No such dev_data_index=%s found" % (dev_data_index))
+                raise FitParseError(f"No such dev_data_index={dev_data_index} found")
 
             warnings.warn(
-                "Dev type for dev_data_index=%s missing. Adding dummy dev type." % (dev_data_index)
+                f"Dev type for dev_data_index={dev_data_index} missing. Adding dummy dev type."
             )
+
             self._append_dev_data_id(dev_data_index)
 
         self.dev_types[dev_data_index]["fields"][field_def_num] = DevField(
@@ -62,17 +63,22 @@ class DeveloperDataMixin:
         dev_data_index = message.get_raw_value('developer_data_index')
         field_def_num = message.get_raw_value('field_definition_number')
         base_type_id = message.get_raw_value('fit_base_type_id')
-        field_name = message.get_raw_value('field_name') or "unnamed_dev_field_%s" % field_def_num
+        field_name = (
+            message.get_raw_value('field_name')
+            or f"unnamed_dev_field_{field_def_num}"
+        )
+
         units = message.get_raw_value("units")
         native_field_num = message.get_raw_value('native_field_num')
 
         if dev_data_index not in self.dev_types:
             if self.check_developer_data:
-                raise FitParseError("No such dev_data_index=%s found" % (dev_data_index))
+                raise FitParseError(f"No such dev_data_index={dev_data_index} found")
 
             warnings.warn(
-                "Dev type for dev_data_index=%s missing. Adding dummy dev type." % (dev_data_index)
+                f"Dev type for dev_data_index={dev_data_index} missing. Adding dummy dev type."
             )
+
             self._append_dev_data_id(dev_data_index)
 
         fields = self.dev_types[int(dev_data_index)]['fields']
@@ -95,8 +101,9 @@ class DeveloperDataMixin:
                 )
 
             warnings.warn(
-                "Dev type for dev_data_index=%s missing. Adding dummy dev type." % (dev_data_index)
+                f"Dev type for dev_data_index={dev_data_index} missing. Adding dummy dev type."
             )
+
             self._append_dev_data_id(dev_data_index)
 
         dev_type = self.dev_types[dev_data_index]
@@ -170,7 +177,7 @@ class FitFileDecoder(DeveloperDataMixin):
         fmt_with_endian = endian + fmt
         size = struct.calcsize(fmt_with_endian)
         if size <= 0:
-            raise FitParseError("Invalid struct format: %s" % fmt_with_endian)
+            raise FitParseError(f"Invalid struct format: {fmt_with_endian}")
 
         if data is None:
             data = self._read(size)
@@ -187,8 +194,9 @@ class FitFileDecoder(DeveloperDataMixin):
             return
         if crc_computed == crc_read or (allow_zero and crc_read == 0):
             return
-        raise FitCRCError('CRC Mismatch [computed: {}, read: {}]'.format(
-            Crc.format(crc_computed), Crc.format(crc_read)))
+        raise FitCRCError(
+            f'CRC Mismatch [computed: {Crc.format(crc_computed)}, read: {Crc.format(crc_read)}]'
+        )
 
     ##########
     # Private Data Parsing Methods
@@ -287,7 +295,7 @@ class FitFileDecoder(DeveloperDataMixin):
         mesg_type = MESSAGE_TYPES.get(global_mesg_num)
         field_defs = []
 
-        for n in range(num_fields):
+        for _ in range(num_fields):
             field_def_num, field_size, base_type_num = self._read_struct('3B', endian=endian)
             # Try to get field from message type (None if unknown)
             field = mesg_type.fields.get(field_def_num) if mesg_type else None
@@ -318,7 +326,7 @@ class FitFileDecoder(DeveloperDataMixin):
         dev_field_defs = []
         if header.is_developer_data:
             num_dev_fields = self._read_struct('B', endian=endian)
-            for n in range(num_dev_fields):
+            for _ in range(num_dev_fields):
                 field_def_num, field_size, dev_data_index = self._read_struct('3B', endian=endian)
                 field = self.get_dev_type(dev_data_index, field_def_num)
                 dev_field_defs.append(DevFieldDefinition(
@@ -521,10 +529,7 @@ class FitFileDecoder(DeveloperDataMixin):
         if obj is None:
             return None
 
-        if is_iterable(obj):
-            return set(obj)
-        else:
-            return {obj}
+        return set(obj) if is_iterable(obj) else {obj}
 
     ##########
     # Public API
@@ -566,8 +571,7 @@ class CacheMixin:
             if self._should_yield(message, with_definitions, names):
                 yield message.as_dict() if as_dict else message
 
-        for message in super().get_messages(names, with_definitions, as_dict):
-            yield message
+        yield from super().get_messages(names, with_definitions, as_dict)
 
     @property
     def messages(self):
