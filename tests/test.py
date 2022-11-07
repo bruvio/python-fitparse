@@ -15,7 +15,6 @@ import unittest
 
 
 def generate_messages(mesg_num, local_mesg_num, field_defs, endian='<', data=None):
-    mesgs = []
     base_type_list = []
 
     # definition message, local message num
@@ -23,19 +22,18 @@ def generate_messages(mesg_num, local_mesg_num, field_defs, endian='<', data=Non
     # reserved byte and endian
     s += pack('<xB', int(endian == '>'))
     # global message num, num fields
-    s += pack('%sHB' % endian, mesg_num, len(field_defs))
+    s += pack(f'{endian}HB', mesg_num, len(field_defs))
     for def_num, base_type in field_defs:
         base_type = [bt for bt in BASE_TYPES.values() if bt.name == base_type][0]
         base_type_list.append(base_type)
         s += pack('<3B', def_num, base_type.size, base_type.identifier)
 
-    mesgs.append(s)
-
+    mesgs = [s]
     if data:
         for mesg_data in data:
             s = pack('B', local_mesg_num)
             for value, base_type in zip(mesg_data, base_type_list):
-                s += pack("{}{}".format(endian, base_type.fmt), value)
+                s += pack(f"{endian}{base_type.fmt}", value)
             mesgs.append(s)
 
     return b''.join(mesgs)
@@ -61,8 +59,8 @@ def generate_fitfile(data=None, endian='<'):
 
     # Prototcol version 1.0, profile version 1.52
     header = pack('<2BHI4s', 14, 16, 152, len(fit_data), b'.FIT')
-    file_data = header + pack('<' + Crc.FMT, Crc.calculate(header)) + fit_data
-    return file_data + pack('<' + Crc.FMT, Crc.calculate(file_data))
+    file_data = header + pack(f'<{Crc.FMT}', Crc.calculate(header)) + fit_data
+    return file_data + pack(f'<{Crc.FMT}', Crc.calculate(file_data))
 
 
 def secs_to_dt(secs):
@@ -105,36 +103,34 @@ class FitFileTestCase(unittest.TestCase):
         self.test_basic_file_with_one_record('>')
 
     def test_component_field_accumulaters(self):
-        # TODO: abstract CSV parsing
-        csv_fp = open(testfile('compressed-speed-distance-records.csv'))
-        csv_file = csv.reader(csv_fp)
-        next(csv_file)  # Consume header
+        with open(testfile('compressed-speed-distance-records.csv')) as csv_fp:
+            csv_file = csv.reader(csv_fp)
+            next(csv_file)  # Consume header
 
-        f = FitFile(testfile('compressed-speed-distance.fit'))
-        f.parse()
+            f = FitFile(testfile('compressed-speed-distance.fit'))
+            f.parse()
 
-        records = f.get_messages(name='record')
-        empty_record = next(records)  # Skip empty record for now (sets timestamp via header)
+            records = f.get_messages(name='record')
+            empty_record = next(records)  # Skip empty record for now (sets timestamp via header)
 
-        # File's timestamp record is < 0x10000000, so field returns seconds
-        self.assertEqual(empty_record.get_value('timestamp'), 17217864)
+            # File's timestamp record is < 0x10000000, so field returns seconds
+            self.assertEqual(empty_record.get_value('timestamp'), 17217864)
 
-        # TODO: update using local_timestamp as offset, since we have this value as 2012 date
+            # TODO: update using local_timestamp as offset, since we have this value as 2012 date
 
-        for count, (record, (timestamp, heartrate, speed, distance, cadence)) in enumerate(zip(records, csv_file)):
-            # No fancy datetime stuff, since timestamp record is < 0x10000000
-            fit_ts = record.get_value('timestamp')
-            self.assertIsInstance(fit_ts, int)
-            self.assertLess(fit_ts, 0x10000000)
-            self.assertEqual(fit_ts, int(timestamp))
+            for count, (record, (timestamp, heartrate, speed, distance, cadence)) in enumerate(zip(records, csv_file)):
+                # No fancy datetime stuff, since timestamp record is < 0x10000000
+                fit_ts = record.get_value('timestamp')
+                self.assertIsInstance(fit_ts, int)
+                self.assertLess(fit_ts, 0x10000000)
+                self.assertEqual(fit_ts, int(timestamp))
 
-            self.assertEqual(record.get_value('heart_rate'), int(heartrate))
-            self.assertEqual(record.get_value('cadence'), int(cadence) if cadence != 'null' else None)
-            self.assertAlmostEqual(record.get_value('speed'), float(speed))
-            self.assertAlmostEqual(record.get_value('distance'), float(distance))
+                self.assertEqual(record.get_value('heart_rate'), int(heartrate))
+                self.assertEqual(record.get_value('cadence'), int(cadence) if cadence != 'null' else None)
+                self.assertAlmostEqual(record.get_value('speed'), float(speed))
+                self.assertAlmostEqual(record.get_value('distance'), float(distance))
 
-        self.assertEqual(count, 753)  # TODO: confirm size(records) = size(csv)
-        csv_fp.close()
+            self.assertEqual(count, 753)  # TODO: confirm size(records) = size(csv)
 
     def test_component_field_resolves_subfield(self):
         fit_data = generate_fitfile(
@@ -252,67 +248,67 @@ class FitFileTestCase(unittest.TestCase):
             'garmin-edge-820-bike-records.csv')
 
     def _csv_test_helper(self, fit_file, csv_file):
-        csv_fp = open(testfile(csv_file))
-        csv_messages = csv.reader(csv_fp)
-        field_names = next(csv_messages)  # Consume header
+        with open(testfile(csv_file)) as csv_fp:
+            csv_messages = csv.reader(csv_fp)
+            field_names = next(csv_messages)  # Consume header
 
-        f = FitFile(testfile(fit_file))
-        messages = f.get_messages(name='record')
+            f = FitFile(testfile(fit_file))
+            messages = f.get_messages(name='record')
 
-        # For fixups
-        last_valid_lat, last_valid_long = None, None
+            # For fixups
+            last_valid_lat, last_valid_long = None, None
 
-        for message, csv_message in zip(messages, csv_messages):
-            for csv_index, field_name in enumerate(field_names):
-                fit_value, csv_value = message.get_value(field_name), csv_message[csv_index]
-                if field_name == 'timestamp':
-                    # Adjust GMT to PDT and format
-                    fit_value = (fit_value - datetime.timedelta(hours=7)).strftime("%a %b %d %H:%M:%S PDT %Y")
+            for message, csv_message in zip(messages, csv_messages):
+                for csv_index, field_name in enumerate(field_names):
+                    fit_value, csv_value = message.get_value(field_name), csv_message[csv_index]
+                    if field_name == 'timestamp':
+                        # Adjust GMT to PDT and format
+                        fit_value = (fit_value - datetime.timedelta(hours=7)).strftime("%a %b %d %H:%M:%S PDT %Y")
 
-                # Track last valid lat/longs
-                if field_name == 'position_lat':
-                    if fit_value is not None:
+                                # Track last valid lat/longs
+                    if field_name == 'position_lat' and fit_value is not None:
                         last_valid_lat = fit_value
-                if field_name == 'position_long':
-                    if fit_value is not None:
+                    if field_name == 'position_long' and fit_value is not None:
                         last_valid_long = fit_value
 
-                # ANT FIT SDK Dump tool does a bad job of logging invalids, so fix them
-                if fit_value is None:
-                    # ANT FIT SDK Dump tool cadence reports invalid as 0
-                    if field_name == 'cadence' and csv_value == '0':
+                    # ANT FIT SDK Dump tool does a bad job of logging invalids, so fix them
+                    if fit_value is None:
+                        # ANT FIT SDK Dump tool cadence reports invalid as 0
+                        if field_name == 'cadence' and csv_value == '0':
+                            csv_value = None
+                        # ANT FIT SDK Dump tool invalid lat/lng reports as last valid
+                        if field_name == 'position_lat':
+                            fit_value = last_valid_lat
+                        if field_name == 'position_long':
+                            fit_value = last_valid_long
+
+                    if isinstance(fit_value, int):
+                        csv_value = int(fit_value)
+                    if csv_value == '':
                         csv_value = None
-                    # ANT FIT SDK Dump tool invalid lat/lng reports as last valid
-                    if field_name == 'position_lat':
-                        fit_value = last_valid_lat
-                    if field_name == 'position_long':
-                        fit_value = last_valid_long
 
-                if isinstance(fit_value, int):
-                    csv_value = int(fit_value)
-                if csv_value == '':
-                    csv_value = None
+                    if isinstance(fit_value, float):
+                        # Float comparison
+                        self.assertAlmostEqual(fit_value, float(csv_value))
+                    else:
+                        self.assertEqual(
+                            fit_value,
+                            csv_value,
+                            msg=f"For {field_name}, FIT value '{fit_value}' did not match CSV value '{csv_value}'",
+                        )
 
-                if isinstance(fit_value, float):
-                    # Float comparison
-                    self.assertAlmostEqual(fit_value, float(csv_value))
-                else:
-                    self.assertEqual(fit_value, csv_value,
-                        msg="For {}, FIT value '{}' did not match CSV value '{}'".format(field_name, fit_value, csv_value))
 
-        try:
-            next(messages)
-            self.fail(".FIT file had more than csv file")
-        except StopIteration:
-            pass
+            try:
+                next(messages)
+                self.fail(".FIT file had more than csv file")
+            except StopIteration:
+                pass
 
-        try:
-            next(csv_messages)
-            self.fail(".CSV file had more messages than .FIT file")
-        except StopIteration:
-            pass
-
-        csv_fp.close()
+            try:
+                next(csv_messages)
+                self.fail(".CSV file had more messages than .FIT file")
+            except StopIteration:
+                pass
 
     def test_developer_types(self):
         """Test that a file with developer types in it can be parsed"""
